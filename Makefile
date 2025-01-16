@@ -23,7 +23,7 @@ build:
 
 .PHONY: manual
 manual:
-	swift package plugin generate-manual 
+	swift package generate-manual 
 	# install config in brew formula 
 	# man1.install ".build/plugins/GenerateManual/outputs/rmtrash/rmtrash.1"
 
