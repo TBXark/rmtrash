@@ -41,9 +41,6 @@ struct Command: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Verbose mode; explain at all times what is being done.")
     var verbose: Bool = false
 
-    @Flag(name: .long, help: "Display version information, and exit.")
-    var version: Bool = false
-
     @Argument(help: "The files or directories to move to trash.")
     var paths: [String] = []
 
