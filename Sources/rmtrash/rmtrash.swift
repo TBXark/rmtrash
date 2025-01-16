@@ -45,10 +45,6 @@ struct Command: ParsableCommand {
     var paths: [String] = []
 
     func run() throws {
-        guard !version else {
-            print(Command.configuration.version)
-            return
-        }
         do {
             let args = try parseArgs()
             Logger.level = args.verbose ? .verbose : .error
