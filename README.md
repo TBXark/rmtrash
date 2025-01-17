@@ -12,7 +12,7 @@
 ###### [Homebrew](https://brew.sh)
 
 ```sh
-brew install tbxark/repo/rmtrash
+brew install rmtrash
 ```
 
 ###### [Mint](https://github.com/yonaskolb/Mint)
