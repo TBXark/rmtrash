@@ -8,10 +8,11 @@ struct Command: ParsableCommand {
         commandName: "rmtrash",
         abstract: "Move files and directories to the trash.",
         discussion: "rmtrash is a small utility that will move the file to macOS's Trash rather than obliterating the file (as rm does).",
-        version: "0.6.6",
+        version: "0.6.7",
         shouldDisplay: true,
         subcommands: [],
-        helpNames: .long
+        helpNames: .long,
+        aliases: ["trash", "del", "rm"]
     )
 
     @Flag(name: .shortAndLong, help: "Ignore nonexistant files, and never prompt before removing.")
@@ -400,7 +401,6 @@ extension Trash {
                 } else {
                     // can not remove directory when not recursive and not emptyDirs
                     throw canNotRemovePanic(path: path, err: "Is a directory")
-
                 }
             }
         }
