@@ -26,6 +26,7 @@ manual:
 	swift package generate-manual 
 	# install config in brew formula 
 	# man1.install ".build/plugins/GenerateManual/outputs/rmtrash/rmtrash.1"
+	cp .build/plugins/GenerateManual/outputs/rmtrash/rmtrash.1 Manual/rmtrash.1
 
 .PHONY: build-universal
 build-universal:
