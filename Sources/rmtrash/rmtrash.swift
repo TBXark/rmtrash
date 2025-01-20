@@ -91,12 +91,13 @@ struct Command: ParsableCommand {
 
 public protocol FileManagerType {
     func trashItem(at url: URL) throws
+    
+    func isExist(atPath path: String) -> Bool
     func isDirectory(_ url: URL) throws -> Bool
     func isEmptyDirectory(_ url: URL) -> Bool
     func isRootDir(_ url: URL) -> Bool
     func isCrossMountPoint(_ url: URL) throws -> Bool
-
-    func fileExists(atPath path: String) -> Bool
+    
     func subpaths(atPath path: String, enumerator handler: (String) -> Bool)
 }
 
@@ -105,7 +106,11 @@ extension FileManager: FileManagerType {
         Logger.verbose("rmtrash: \(url.path)")
         try trashItem(at: url, resultingItemURL: nil)
     }
-
+    
+    public func isExist(atPath path: String) -> Bool {
+        return (try? attributesOfItem(atPath: path)) != nil
+    }
+    
     public func isDirectory(_ url: URL) throws -> Bool {
         let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
         return resourceValues.isDirectory == true
@@ -360,7 +365,7 @@ extension Trash {
 
     private func permissionCheck(path: String) throws -> PermissionCheckResult {
         // file exists check
-        if !fileManager.fileExists(atPath: path) {
+        if !fileManager.isExist(atPath: path) {
             if !config.force {
                 throw canNotRemovePanic(path: path, err: "No such file or directory")
             }

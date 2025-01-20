@@ -115,7 +115,7 @@ class FileManagerMock: FileManagerType {
         return false
     }
 
-    func fileExists(atPath path: String) -> Bool {
+    func isExist(atPath path: String) -> Bool {
         let components = path.split(separator: "/").map(String.init)
         return findFile(components: components, in: root) != nil
     }
@@ -342,6 +342,16 @@ final class RmTrashTests: XCTestCase {
         // Test remaining file deletion
         XCTAssertTrue(trash.removeMultiple(paths: ["/test2.txt"]))
         assertFileStructure(fileManager, expectedFiles: [])
+    }
+    
+    
+    func testRemoveSymlink() {
+        let trash = Trash(config: Trash.Config.init(interactiveMode: .never, force: true, recursive: true, emptyDirs: true, preserveRoot: true, oneFileSystem: true, verbose: true))
+        let dir = FileManager.default.temporaryDirectory
+        let file = dir.appending(path: "no_such_file")
+        let link = dir.appending(path: "sym.link")
+        XCTAssertNoThrow(try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file))
+        XCTAssertTrue(trash.removeMultiple(paths: [link.path]))
     }
 }
 
