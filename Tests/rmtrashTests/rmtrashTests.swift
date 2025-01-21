@@ -410,6 +410,41 @@ final class RmTrashTests: XCTestCase {
     }
 }
 
+final class FileManagerTests: XCTestCase {
+    
+    func testIsRootDir() throws {
+
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        XCTAssertTrue(fileManager.isRootDir(URL(fileURLWithPath: "/")))
+        XCTAssertFalse(fileManager.isRootDir(url))
+    }
+
+    func testIsEmptyDirectory() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+
+        // Empty directory
+        XCTAssertTrue(fileManager.isEmptyDirectory(url))
+
+        // Directory with a file
+        let fileURL = url.appendingPathComponent("test.txt")
+        fileManager.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+        XCTAssertFalse(fileManager.isEmptyDirectory(url))
+    }
+
+    func testFileTypeDetection() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+
+        XCTAssertNil(fileManager.fileType(url.appendingPathComponent("no_file")))
+        let fileURL = url.appendingPathComponent("temp.txt")
+        fileManager.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+        XCTAssertEqual(fileManager.fileType(fileURL), .typeRegular)
+    }
+}
+
 extension RmTrashTests {
 
     func makeTrash(
