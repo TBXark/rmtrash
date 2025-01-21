@@ -214,6 +214,7 @@ final class RmTrashTests: XCTestCase {
             question: StaticAnswer(value: true)
         )
         XCTAssertTrue(yesTrash.removeMultiple(paths: ["./test1.txt", "./dir1"]))
+        XCTAssertTrue(fileManager.isEmptyDirectory(url))
         assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
     

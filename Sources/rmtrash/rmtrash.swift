@@ -116,10 +116,7 @@ extension FileManager: FileManagerType {
         guard let enumerator = enumerator(at: url, includingPropertiesForKeys: nil, options: []) else {
             return true
         }
-        for _ in enumerator {
-            return false
-        }
-        return true
+        return enumerator.nextObject() == nil
     }
 
     public func isCrossMountPoint(_ url: URL) throws -> Bool {
