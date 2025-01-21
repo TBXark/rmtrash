@@ -96,18 +96,18 @@ public protocol FileManagerType {
     func isRootDir(_ url: URL) -> Bool
     func isEmptyDirectory(_ url: URL) -> Bool
     func isCrossMountPoint(_ url: URL) throws -> Bool
-    
+
     func fileType(_ url: URL) -> FileAttributeType?
     func subpaths(atPath path: String, enumerator handler: (String) -> Bool)
 }
 
 extension FileManager: FileManagerType {
-    
+
     public func trashItem(at url: URL) throws {
         Logger.verbose("rmtrash: \(url.path)")
         try trashItem(at: url, resultingItemURL: nil)
     }
-    
+
     public func isRootDir(_ url: URL) -> Bool {
         return url.standardizedFileURL.path == "/"
     }
@@ -125,7 +125,7 @@ extension FileManager: FileManagerType {
         let urlVol = try url.resourceValues(forKeys: [URLResourceKey.volumeURLKey])
         return curVol.volume != urlVol.volume
     }
-    
+
     public func fileType(_ url: URL) -> FileAttributeType? {
         guard let attr = try? attributesOfItem(atPath: url.path) else {
             return nil
