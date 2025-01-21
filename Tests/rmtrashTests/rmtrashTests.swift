@@ -1,9 +1,11 @@
 import XCTest
 @testable import rmtrash
 
-enum FileMock: Equatable {
+enum FileNode: Equatable, Comparable {
+    
     case file(name: String)
-    case directory(name: String, sub: [FileMock])
+    case directory(name: String, sub: [FileNode])
+    
 
     var name: String {
         switch self {
@@ -18,137 +20,82 @@ enum FileMock: Equatable {
         case .directory: return true
         }
     }
+    
+    static func < (lhs: FileNode, rhs: FileNode) -> Bool {
+        return lhs.name < rhs.name
+    }
+    
+    static func ==(lhs: FileNode, rhs: FileNode) -> Bool {
+        switch (lhs, rhs) {
+        case (.file(let l), .file(let r)):
+            return l == r
+        case (.directory(let l, let ls), .directory(let r, let rs)):
+            guard l == r else { return false }
+            let lss = ls.sorted()
+            let rss = rs.sorted()
+            if lss.count != rss.count { return false }
+            return zip(lss, rss).allSatisfy(==)
+        default:
+            return false
+        }
+    }
 }
 
-class FileManagerMock: FileManagerType {
-    private var root: [FileMock]
-
-    init(root: [FileMock]) {
-        self.root = root
+extension Array where Element == FileNode {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        let lss = lhs.sorted()
+        let rss = rhs.sorted()
+        return zip(lss, rss).allSatisfy(==)
     }
+}
 
-    private func findFile(components: [String], in files: [FileMock]) -> FileMock? {
-        // Special case for root directory
-        if components.isEmpty || (components.count == 1 && components[0].isEmpty) {
-            return .directory(name: "", sub: files)
+extension FileManager {
+    func currentFileStructure(at url: URL) -> FileNode? {
+        guard let attr = try? attributesOfItem(atPath: url.path),
+              let type = attr[.type] as? FileAttributeType else {
+            return nil
         }
-
-        guard let first = components.first else { return nil }
-        for file in files {
-            if file.name == first {
-                if components.count == 1 {
-                    return file
-                } else {
-                    switch file {
-                    case .directory(_, let sub):
-                        return findFile(components: Array(components.dropFirst()), in: sub)
-                    default:
-                        return nil
-                    }
+        if type == .typeDirectory {
+            var sub = [FileNode]()
+            guard let paths = try? contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else {
+                return nil
+            }
+            for path in paths {
+                if let node = currentFileStructure(at: url.appendingPathComponent(path.lastPathComponent)) {
+                    sub.append(node)
                 }
             }
+            return FileNode.directory(name: url.lastPathComponent, sub: sub)
         }
-        return nil
+        return FileNode.file(name: url.lastPathComponent)
     }
-
-    private func removeFile(components: [String], from files: inout [FileMock]) -> Bool {
-        guard let first = components.first else { return false }
-
-        if components.count == 1 {
-            // Remove the file directly from current directory
-            if let index = files.firstIndex(where: { $0.name == first }) {
-                files.remove(at: index)
-                return true
-            }
-            return false
-        }
-
-        // Navigate to subdirectory
-        for i in 0..<files.count {
-            if files[i].name == first {
-                if case .directory(let name, var sub) = files[i] {
-                    if removeFile(components: Array(components.dropFirst()), from: &sub) {
-                        files[i] = .directory(name: name, sub: sub)
-                        return true
-                    }
-                }
+    
+    func createFileStructure(node: FileNode, at url: URL) {
+        switch node {
+        case .file(let name):
+            createFile(atPath: url.appendingPathComponent(name).path, contents: nil, attributes: nil)
+        case .directory(let name, let sub):
+            let dirUrl = url.appendingPathComponent(name)
+            try? createDirectory(at: dirUrl, withIntermediateDirectories: true, attributes: nil)
+            for node in sub {
+                createFileStructure(node: node, at: dirUrl)
             }
         }
-        return false
     }
-
-    func trashItem(at url: URL) throws {
-        let components = url.pathComponents.filter { $0 != "/" }
-        if components.isEmpty {
-            root = []
-        } else if !removeFile(components: components, from: &root) {
-            throw Panic("File not found")
+    
+    func createFileStructure(nodes: [FileNode], at url: URL) {
+        for node in nodes {
+            createFileStructure(node: node, at: url)
         }
     }
-
-    func isDirectory(_ url: URL) throws -> Bool {
-        let components = url.pathComponents.filter { $0 != "/" }
-        guard let file = findFile(components: components, in: root) else {
-            throw Panic("File not found")
-        }
-        return file.isDirectory
-    }
-
-    func isEmptyDirectory(_ url: URL) -> Bool {
-        let components = url.pathComponents.filter { $0 != "/" }
-        guard let file = findFile(components: components, in: root) else {
-            return false
-        }
-        if case .directory(_, let sub) = file {
-            return sub.isEmpty
-        }
-        return false
-    }
-
-    func isRootDir(_ url: URL) -> Bool {
-        // Match real FileManager implementation which uses standardizedFileURL
-        return url.standardizedFileURL.path == "/"
-    }
-
-    func isCrossMountPoint(_ url: URL) throws -> Bool {
-        // For mock purposes, we'll always return false
-        return false
-    }
-
-    func isExist(atPath path: String) -> Bool {
-        let components = path.split(separator: "/").map(String.init)
-        return findFile(components: components, in: root) != nil
-    }
-
-    func subpaths(atPath path: String, enumerator handler: (String) -> Bool) {
-        let components = path.split(separator: "/").map(String.init)
-        guard let file = findFile(components: components, in: root) else {
-            return
-        }
-
-        func enumerate(file: FileMock, currentPath: String) {
-            switch file {
-            case .directory(_, let sub):
-                for subFile in sub {
-                    let newPath = currentPath.isEmpty ? subFile.name : "\(currentPath)/\(subFile.name)"
-                    if handler(newPath) {
-                        if case .directory = subFile {
-                            enumerate(file: subFile, currentPath: newPath)
-                        }
-                    }
-                }
-            default:
-                break
-            }
-        }
-
-        if case .directory = file {
-            enumerate(file: file, currentPath: "")
-        }
-    }
-
-    func currentFileStructure() -> [FileMock] {
-        return root
+    
+    static func createTempDirectory() -> (fileManager: FileManager, url: URL) {
+        let fileManager = FileManager()
+        let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+        fileManager.changeCurrentDirectoryPath(tempDir.path)
+        return (fileManager, tempDir)
     }
 }
 
@@ -159,20 +106,26 @@ struct StaticAnswer: Question {
     }
 }
 
+
 final class RmTrashTests: XCTestCase {
+    
 
     func testForceConfig() {
-        let mockFiles: [FileMock] = [
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let mockFiles: [FileNode] = [
             .file(name: "test.txt"),
             .directory(name: "dir1", sub: [
                 .file(name: "file1.txt")
             ])
         ]
-        let fileManager = FileManagerMock(root: mockFiles)
+        fileManager.createFileStructure(nodes: mockFiles, at: url)
 
         let trash = makeTrash(force: true, fileManager: fileManager)
-        XCTAssertTrue(trash.removeMultiple(paths: ["/test.txt"]))
-        assertFileStructure(fileManager, expectedFiles: [
+        XCTAssertTrue(trash.removeMultiple(paths: ["./test.txt"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [
             .directory(name: "dir1", sub: [
                 .file(name: "file1.txt")
             ])
@@ -180,7 +133,11 @@ final class RmTrashTests: XCTestCase {
     }
 
     func testRecursiveConfig() {
-        let mockFiles: [FileMock] = [
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let mockFiles: [FileNode] = [
             .directory(name: "dir1", sub: [
                 .file(name: "file1.txt"),
                 .directory(name: "subdir", sub: [
@@ -188,125 +145,119 @@ final class RmTrashTests: XCTestCase {
                 ])
             ])
         ]
-        let fileManager = FileManagerMock(root: mockFiles)
+        
+        fileManager.createFileStructure(nodes: mockFiles, at: url)
 
         // Test non-recursive config
         let nonRecursiveTrash = makeTrash(fileManager: fileManager)
-        XCTAssertFalse(nonRecursiveTrash.removeMultiple(paths: ["/dir1"]))
-        assertFileStructure(fileManager, expectedFiles: mockFiles)
+        XCTAssertFalse(nonRecursiveTrash.removeMultiple(paths: ["./dir1"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: mockFiles)
 
         // Test recursive config
         let recursiveTrash = makeTrash(recursive: true, fileManager: fileManager)
-        XCTAssertTrue(recursiveTrash.removeMultiple(paths: ["/dir1"]))
-        assertFileStructure(fileManager, expectedFiles: [])
+        XCTAssertTrue(recursiveTrash.removeMultiple(paths: ["./dir1"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
 
     func testEmptyDirsConfig() {
-        let mockFiles: [FileMock] = [
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let mockFiles: [FileNode] = [
             .directory(name: "emptyDir", sub: []),
             .directory(name: "nonEmptyDir", sub: [
                 .file(name: "file.txt")
             ])
         ]
-        let fileManager = FileManagerMock(root: mockFiles)
+        
+        fileManager.createFileStructure(nodes: mockFiles, at: url)
 
         let trash = makeTrash(emptyDirs: true, fileManager: fileManager)
-        XCTAssertTrue(trash.removeMultiple(paths: ["/emptyDir"]))
-        assertFileStructure(fileManager, expectedFiles: [
+        XCTAssertTrue(trash.removeMultiple(paths: ["./emptyDir"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [
             .directory(name: "nonEmptyDir", sub: [
                 .file(name: "file.txt")
             ])
         ])
-        XCTAssertFalse(trash.removeMultiple(paths: ["/nonEmptyDir"]))
-    }
-
-    func testPreserveRootConfig() {
-        let mockFiles: [FileMock] = [
-            .directory(name: "testdir", sub: [])
-        ]
-        let fileManager = FileManagerMock(root: mockFiles)
-
-        // Test preserveRoot enabled
-        let preserveRootTrash = makeTrash(
-            recursive: true,
-            emptyDirs: true,
-            fileManager: fileManager
-        )
-        XCTAssertFalse(preserveRootTrash.removeMultiple(paths: ["/"]))
-        XCTAssertTrue(preserveRootTrash.removeMultiple(paths: ["/testdir"]))
-
-        // Test preserveRoot disabled
-        let nonPreserveRootTrash = makeTrash(
-            recursive: true,
-            emptyDirs: true,
-            preserveRoot: false,
-            fileManager: fileManager
-        )
-        XCTAssertTrue(nonPreserveRootTrash.removeMultiple(paths: ["/"]))
+        XCTAssertFalse(trash.removeMultiple(paths: ["./nonEmptyDir"]))
     }
 
     func testInteractiveModeOnce() {
-        let mockFiles: [FileMock] = [
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let mockFiles: [FileNode] = [
             .file(name: "test1.txt"),
             .directory(name: "dir1", sub: [])
         ]
 
-        // Test with yes answer
-        let yesFileManager = FileManagerMock(root: mockFiles)
-        let yesTrash = makeTrash(
-            interactiveMode: .once,
-            force: false,
-            recursive: true,
-            fileManager: yesFileManager,
-            question: StaticAnswer(value: true)
-        )
-        XCTAssertTrue(yesTrash.removeMultiple(paths: ["/test1.txt", "/dir1"]))
-        assertFileStructure(yesFileManager, expectedFiles: [])
+        fileManager.createFileStructure(nodes: mockFiles, at: url)
 
         // Test with no answer
-        let noFileManager = FileManagerMock(root: mockFiles)
         let noTrash = makeTrash(
             interactiveMode: .once,
             force: false,
             recursive: true,
-            fileManager: noFileManager,
+            fileManager: fileManager,
             question: StaticAnswer(value: false)
         )
-        XCTAssertTrue(noTrash.removeMultiple(paths: ["/test1.txt", "/dir1"]))
-        assertFileStructure(noFileManager, expectedFiles: mockFiles)
+        XCTAssertTrue(noTrash.removeMultiple(paths: ["./test1.txt", "./dir1"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: mockFiles)
+        
+        // Test with yes answer
+        let yesTrash = makeTrash(
+            interactiveMode: .once,
+            force: false,
+            recursive: true,
+            fileManager: fileManager,
+            question: StaticAnswer(value: true)
+        )
+        XCTAssertTrue(yesTrash.removeMultiple(paths: ["./test1.txt", "./dir1"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
-
+    
+   
     func testInteractiveModeAlways() {
-        let mockFiles: [FileMock] = [
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let mockFiles: [FileNode] = [
             .file(name: "test1.txt"),
             .file(name: "test2.txt")
         ]
-
-        // Test with yes answer
-        let yesFileManager = FileManagerMock(root: mockFiles)
-        let yesTrash = makeTrash(
-            interactiveMode: .always,
-            force: false,
-            fileManager: yesFileManager,
-            question: StaticAnswer(value: true)
-        )
-        XCTAssertTrue(yesTrash.removeMultiple(paths: ["/test1.txt", "/test2.txt"]))
-        assertFileStructure(yesFileManager, expectedFiles: [])
+        
+        fileManager.createFileStructure(nodes: mockFiles, at: url)
 
         // Test with no answer
-        let noFileManager = FileManagerMock(root: mockFiles)
         let noTrash = makeTrash(
             interactiveMode: .always,
             force: false,
-            fileManager: noFileManager,
+            fileManager: fileManager,
             question: StaticAnswer(value: false)
         )
-        XCTAssertTrue(noTrash.removeMultiple(paths: ["/test1.txt", "/test2.txt"]))
-        assertFileStructure(noFileManager, expectedFiles: mockFiles)
+        XCTAssertTrue(noTrash.removeMultiple(paths: ["./test1.txt", "./test2.txt"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: mockFiles)
+        
+        // Test with yes answer
+        let yesTrash = makeTrash(
+            interactiveMode: .always,
+            force: false,
+            fileManager: fileManager,
+            question: StaticAnswer(value: true)
+        )
+        XCTAssertTrue(yesTrash.removeMultiple(paths: ["./test1.txt", "./test2.txt"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
 
     func testFileListStateAfterDeletion() {
-        let initialFiles: [FileMock] = [
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let initialFiles: [FileNode] = [
             .file(name: "test1.txt"),
             .file(name: "test2.txt"),
             .directory(name: "dir1", sub: [
@@ -317,12 +268,14 @@ final class RmTrashTests: XCTestCase {
                 ])
             ])
         ]
-        let fileManager = FileManagerMock(root: initialFiles)
+        
+        fileManager.createFileStructure(nodes: initialFiles, at: url)
+        
         let trash = makeTrash(recursive: true, emptyDirs: true, fileManager: fileManager)
 
         // Test single file deletion
-        XCTAssertTrue(trash.removeMultiple(paths: ["/test1.txt"]))
-        assertFileStructure(fileManager, expectedFiles: [
+        XCTAssertTrue(trash.removeMultiple(paths: ["./test1.txt"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [
             .file(name: "test2.txt"),
             .directory(name: "dir1", sub: [
                 .file(name: "file1.txt"),
@@ -334,24 +287,43 @@ final class RmTrashTests: XCTestCase {
         ])
 
         // Test directory deletion
-        XCTAssertTrue(trash.removeMultiple(paths: ["/dir1"]))
-        assertFileStructure(fileManager, expectedFiles: [
+        XCTAssertTrue(trash.removeMultiple(paths: ["./dir1"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [
             .file(name: "test2.txt")
         ])
 
         // Test remaining file deletion
-        XCTAssertTrue(trash.removeMultiple(paths: ["/test2.txt"]))
-        assertFileStructure(fileManager, expectedFiles: [])
+        XCTAssertTrue(trash.removeMultiple(paths: ["./test2.txt"]))
+        assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
     
     
     func testRemoveSymlink() {
-        let trash = Trash(config: Trash.Config.init(interactiveMode: .never, force: true, recursive: true, emptyDirs: true, preserveRoot: true, oneFileSystem: true, verbose: true))
-        let dir = FileManager.default.temporaryDirectory
-        let file = dir.appending(path: "no_such_file")
-        let link = dir.appending(path: "sym.link")
-        XCTAssertNoThrow(try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file))
-        XCTAssertTrue(trash.removeMultiple(paths: [link.path]))
+        
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let trash = makeTrash(force: false, recursive: true, emptyDirs: true, fileManager: fileManager)
+        
+        let file = url.appending(path: "no_such_file")
+        let link = url.appending(path: "sym.link")
+        
+        XCTAssertNil(fileManager.fileType(file))
+        XCTAssertNil(fileManager.fileType(link))
+        XCTAssertNoThrow(try fileManager.createSymbolicLink(at: link, withDestinationURL: file))
+        
+        fileManager.subpaths(atPath: ".") { link in
+            XCTAssertEqual(link, "./sym.link")
+            return true
+        }
+        
+        if let subs = try? fileManager.contentsOfDirectory(atPath: url.relativePath), let sub = subs.first {
+            XCTAssertEqual(sub, "sym.link")
+        }
+        
+        XCTAssertEqual(fileManager.fileType(link), .typeSymbolicLink)
+        XCTAssertTrue(trash.removeMultiple(paths: ["sym.link"]))
+        XCTAssertNil(fileManager.fileType(link))
     }
 }
 
@@ -380,11 +352,20 @@ extension RmTrashTests {
         return Trash(
             config: config,
             question: question ?? StaticAnswer(value: true),
-            fileManager: fileManager ?? FileManagerMock(root: [])
+            fileManager: fileManager ?? FileManager.default
         )
     }
 
-    func assertFileStructure(_ fileManager: FileManagerMock, expectedFiles: [FileMock], file: StaticString = #file, line: UInt = #line) {
-        XCTAssertEqual(fileManager.currentFileStructure(), expectedFiles, file: file, line: line)
+    func assertFileStructure(_ fileManager: FileManager, at url: URL, expectedFiles: [FileNode], file: StaticString = #file, line: UInt = #line) {
+        guard let node = fileManager.currentFileStructure(at: url) else {
+            XCTFail("Failed to read file structure at \(url)", file: file, line: line)
+            return
+        }
+        switch node {
+        case .directory(_, let sub):
+            XCTAssertTrue(sub == expectedFiles, file: file, line: line)
+        case .file:
+            XCTFail("Expected directory, found file", file: file, line: line)
+        }
     }
 }

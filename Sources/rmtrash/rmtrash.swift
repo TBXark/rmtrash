@@ -92,29 +92,24 @@ struct Command: ParsableCommand {
 
 public protocol FileManagerType {
     func trashItem(at url: URL) throws
-    
-    func isExist(atPath path: String) -> Bool
-    func isDirectory(_ url: URL) throws -> Bool
-    func isEmptyDirectory(_ url: URL) -> Bool
+
     func isRootDir(_ url: URL) -> Bool
+    func isEmptyDirectory(_ url: URL) -> Bool
     func isCrossMountPoint(_ url: URL) throws -> Bool
     
+    func fileType(_ url: URL) -> FileAttributeType?
     func subpaths(atPath path: String, enumerator handler: (String) -> Bool)
 }
 
 extension FileManager: FileManagerType {
+    
     public func trashItem(at url: URL) throws {
         Logger.verbose("rmtrash: \(url.path)")
         try trashItem(at: url, resultingItemURL: nil)
     }
     
-    public func isExist(atPath path: String) -> Bool {
-        return (try? attributesOfItem(atPath: path)) != nil
-    }
-    
-    public func isDirectory(_ url: URL) throws -> Bool {
-        let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
-        return resourceValues.isDirectory == true
+    public func isRootDir(_ url: URL) -> Bool {
+        return url.standardizedFileURL.path == "/"
     }
 
     public func isEmptyDirectory(_ url: URL) -> Bool {
@@ -127,15 +122,21 @@ extension FileManager: FileManagerType {
         return true
     }
 
-    public func isRootDir(_ url: URL) -> Bool {
-        return url.standardizedFileURL.path == "/"
-    }
-
     public func isCrossMountPoint(_ url: URL) throws -> Bool {
         let cur = URL(fileURLWithPath: currentDirectoryPath)
         let curVol = try cur.resourceValues(forKeys: [URLResourceKey.volumeURLKey])
         let urlVol = try url.resourceValues(forKeys: [URLResourceKey.volumeURLKey])
         return curVol.volume != urlVol.volume
+    }
+    
+    public func fileType(_ url: URL) -> FileAttributeType? {
+        guard let attr = try? attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        guard let fileType = attr[.type] as? FileAttributeType else {
+            return nil
+        }
+        return  fileType
     }
 
     public func subpaths(atPath path: String, enumerator handler: (String) -> Bool) {
@@ -343,10 +344,10 @@ extension Trash {
     private func promptOnceCheck(paths: [String]) -> Bool {
         var isDirs = [String: Bool]()
         for path in paths {
-            guard let res = try? fileManager.isDirectory(URL(fileURLWithPath: path)) else {
+            guard let res = fileManager.fileType(URL(fileURLWithPath: path)) else {
                 continue
             }
-            isDirs[path] = res
+            isDirs[path] = res == .typeDirectory
         }
         let dirs = isDirs.filter({ $0.value }).keys.map({ $0 })
         let fileCount = isDirs.filter({ $0.value == false }).count
@@ -365,16 +366,16 @@ extension Trash {
     }
 
     private func permissionCheck(path: String) throws -> PermissionCheckResult {
+        let url = URL(fileURLWithPath: path)
         // file exists check
-        if !fileManager.isExist(atPath: path) {
+        guard let fileType = fileManager.fileType(url) else {
             if !config.force {
                 throw canNotRemovePanic(path: path, err: "No such file or directory")
             }
             return .skip // skip nonexistent files when force is set
         }
 
-        let url = URL(fileURLWithPath: path)
-        let isDir = try fileManager.isDirectory(url)
+        let isDir = fileType == .typeDirectory
 
         // cross mount point check
         if config.oneFileSystem {
