@@ -108,7 +108,6 @@ struct StaticAnswer: Question {
 
 
 final class RmTrashTests: XCTestCase {
-    
 
     func testForceConfig() {
         
@@ -328,7 +327,6 @@ final class RmTrashTests: XCTestCase {
         assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
     
-    
     func testRemoveSymlink() {
         
         let (fileManager, url) = FileManager.createTempDirectory()
@@ -355,6 +353,59 @@ final class RmTrashTests: XCTestCase {
         XCTAssertEqual(fileManager.fileType(link), .typeSymbolicLink)
         XCTAssertTrue(trash.removeMultiple(paths: ["sym.link"]))
         XCTAssertNil(fileManager.fileType(link))
+    }
+    
+    func testMultipleFilesRemoval() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let mockFiles: [FileNode] = [
+            .file(name: "test1.txt"),
+            .file(name: "test2.txt"),
+            .file(name: "test3.txt"),
+            .directory(name: "dir1", sub: [
+                .file(name: "file1.txt")
+            ]),
+            .directory(name: "dir2", sub: [])
+        ]
+        fileManager.createFileStructure(nodes: mockFiles, at: url)
+        
+        // Test removing multiple files together
+        let trash = makeTrash(
+            force: true,
+            recursive: true,
+            emptyDirs: true,
+            fileManager: fileManager
+        )
+        XCTAssertTrue(trash.removeMultiple(paths: [
+            "./test1.txt",
+            "./test2.txt",
+            "./dir1",
+            "./dir2"
+        ]))
+        
+        assertFileStructure(fileManager, at: url, expectedFiles: [
+            .file(name: "test3.txt")
+        ])
+    }
+    
+    func testNonExistentFiles() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        // Test with force = false
+        let trashNoForce = makeTrash(
+            force: false,
+            fileManager: fileManager
+        )
+        XCTAssertFalse(trashNoForce.removeMultiple(paths: ["./nonexistent.txt"]))
+        
+        // Test with force = true
+        let trashForce = makeTrash(
+            force: true,
+            fileManager: fileManager
+        )
+        XCTAssertTrue(trashForce.removeMultiple(paths: ["./nonexistent.txt"]))
     }
 }
 
@@ -399,4 +450,5 @@ extension RmTrashTests {
             XCTFail("Expected directory, found file", file: file, line: line)
         }
     }
+
 }
