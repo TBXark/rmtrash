@@ -251,6 +251,37 @@ final class RmTrashTests: XCTestCase {
         XCTAssertTrue(yesTrash.removeMultiple(paths: ["./test1.txt", "./test2.txt"]))
         assertFileStructure(fileManager, at: url, expectedFiles: [])
     }
+    
+    func testSubDir() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let initialFiles: [FileNode] = [
+            .file(name: "test1.txt"),
+            .file(name: "test2.txt"),
+            .directory(name: "dir1", sub: [
+                .file(name: "file1.txt"),
+                .file(name: "file2.txt"),
+                .directory(name: "subdir", sub: [
+                    .file(name: "deep.txt")
+                ])
+            ])
+        ]
+        
+        fileManager.createFileStructure(nodes: initialFiles, at: url)
+        let trash = makeTrash(force: true, fileManager: fileManager)
+
+        
+        XCTAssertTrue(trash.removeMultiple(paths: ["./dir1/file1.txt"]))
+        fileManager.changeCurrentDirectoryPath("dir1")
+        
+        XCTAssertTrue(trash.removeMultiple(paths: ["./file2.txt"]))
+        assertFileStructure(fileManager, at: url.appendingPathComponent("dir1"), expectedFiles: [
+            .directory(name: "subdir", sub: [
+                .file(name: "deep.txt")
+            ])
+        ])
+    }
 
     func testFileListStateAfterDeletion() {
         
