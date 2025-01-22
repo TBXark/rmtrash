@@ -7,6 +7,7 @@
 <img style="max-width: 600px;" alt="image" src="preview.png">
 </details>
 
+
 ## Install
 
 ###### [Homebrew](https://brew.sh)
@@ -27,7 +28,6 @@ mint install tbxark/rmtrash
 
 
 ## Usage
-
 
 ### Syntax
 
@@ -59,11 +59,9 @@ rmtrash --version
 | **--help**                      | Display a help message, and exit.                            |
 | **--version**                   | Display version information, and exit.                       |
 
-
 ### Usage notes
 
 If the **-I**/**--interactive=once** option is given, and there are more than three files or the **-r**/**-R**/**--recursive** options are specified, **rm** prompts before deleting anything. If the user does not respond **yes**/**y**/**Y** to the prompt, the entire command is aborted.
-
 
 ### Removing directories
 
@@ -71,12 +69,10 @@ By default, rm does not remove directories. If the -r/-R/--recursive option is s
 
 If the specified directory is empty, it may be removed with the -d/--dir option, instead.
 
-
 ### Environment
 
 - **RMTRASH_INTERACTIVE_MODE** 
   If set, it will be used as the default value for the **--interactive** option.
-
 
 ### Alias Recommended 
 
@@ -89,10 +85,10 @@ alias rm="echo Use 'del', or the full path i.e. '/bin/rm'"
 ```
 
 
-
 ## Known issues
 
 - **rm** can't delete the current executable directory, but **rmtrash** can, but I don't think that's a bug, it's a feature.
 
-### License
+
+## License
 **rmtrash** is released under the MIT license. [See LICENSE](LICENSE) for details.
