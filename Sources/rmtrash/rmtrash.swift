@@ -8,7 +8,7 @@ struct Command: ParsableCommand {
         commandName: "rmtrash",
         abstract: "Move files and directories to the trash.",
         discussion: "rmtrash is a small utility that will move the file to macOS's Trash rather than obliterating the file (as rm does).",
-        version: "0.6.7",
+        version: "0.6.8",
         shouldDisplay: true,
         subcommands: [],
         helpNames: .long,
@@ -210,8 +210,10 @@ public struct CommandLineQuestion: Question {
 
     public func ask(_ message: String) -> Bool {
         print("\(message) (y/n) ", terminator: "")
-        let answer = readLine()
-        return answer?.lowercased() == "y" || answer?.lowercased() == "yes"
+        guard let answer = readLine() else {
+            return false
+        }
+        return answer.lowercased() == "y" || answer.lowercased() == "yes"
     }
 }
 
