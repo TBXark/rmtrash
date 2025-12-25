@@ -441,6 +441,42 @@ final class FileManagerTests: XCTestCase {
         XCTAssertEqual(fileManager.fileType(fileURL), .typeRegular)
         XCTAssertEqual(fileManager.fileType(url), .typeDirectory)
     }
+    
+    func testCrossMountPointDetection() throws {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        // Test same volume detection
+        let subDir = url.appendingPathComponent("subdir")
+        try fileManager.createDirectory(at: subDir, withIntermediateDirectories: true, attributes: nil)
+        
+        // Files on the same volume should not be cross-mount points
+        XCTAssertFalse(try fileManager.isCrossMountPoint(subDir))
+        XCTAssertFalse(try fileManager.isCrossMountPoint(url))
+        
+        // Test with root directory (different volume in most cases)
+        let rootURL = URL(fileURLWithPath: "/")
+        
+        // Get volume info to check if we're actually on different volumes
+        let tempVol = try url.resourceValues(forKeys: [.volumeURLKey])
+        let rootVol = try rootURL.resourceValues(forKeys: [.volumeURLKey])
+        
+        // Only test cross-mount if we're actually on different volumes
+        if tempVol.volume != rootVol.volume {
+            XCTAssertTrue(try fileManager.isCrossMountPoint(rootURL))
+        }
+    }
+    
+    func testVolumeInfoExtraction() throws {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let resourceValues = try url.resourceValues(forKeys: [.volumeURLKey, .volumeUUIDStringKey, .volumeNameKey])
+        
+        // Basic volume info should be available
+        XCTAssertNotNil(resourceValues.volume)
+        XCTAssertNotNil(resourceValues.volumeName)
+    }
 }
 
 func makeTrash(

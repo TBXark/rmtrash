@@ -121,13 +121,34 @@ extension FileManager: FileManagerType {
 
     public func isCrossMountPoint(_ url: URL) throws -> Bool {
         let cur = URL(fileURLWithPath: currentDirectoryPath)
-        let curVol = try cur.resourceValues(forKeys: [URLResourceKey.volumeURLKey])
-        let urlVol = try url.resourceValues(forKeys: [URLResourceKey.volumeURLKey])
-        return curVol.volume != urlVol.volume
+        let curVol = try cur.resourceValues(forKeys: [.volumeURLKey, .volumeUUIDStringKey, .volumeIdentifierKey])
+        let urlVol = try url.resourceValues(forKeys: [.volumeURLKey, .volumeUUIDStringKey, .volumeIdentifierKey])
+        
+        // Primary comparison: Volume URL
+        if let curVolURL = curVol.volume, let urlVolURL = urlVol.volume {
+            if curVolURL == urlVolURL {
+                return false
+            }
+        }
+        
+        // Secondary comparison: Volume UUID (more reliable for network drives and external storage)
+        if let curUUID = curVol.volumeUUIDString, let urlUUID = urlVol.volumeUUIDString {
+            if !curUUID.isEmpty && !urlUUID.isEmpty {
+                return curUUID != urlUUID
+            }
+        }
+        
+        // Tertiary comparison: Volume identifier (fallback for special cases)
+        if let curID = curVol.volumeIdentifier, let urlID = urlVol.volumeIdentifier {
+            return !curID.isEqual(urlID)
+        }
+        
+        // Conservative fallback: assume different volumes if we can't determine
+        return true
     }
 
     public func fileType(_ url: URL) -> FileAttributeType? {
-        guard let attr = try? attributesOfItem(atPath: url.path) else {
+        guard let attr = try? self.attributesOfItem(atPath: url.path) else {
             return nil
         }
         guard let fileType = attr[.type] as? FileAttributeType else {
@@ -138,7 +159,7 @@ extension FileManager: FileManagerType {
 
     public func subpaths(atPath path: String, enumerator handler: (String) -> Bool) {
         if #available(macOS 10.15, *) {
-            if  let enumerator = enumerator(at: URL(fileURLWithPath: path),
+            if  let enumerator = self.enumerator(at: URL(fileURLWithPath: path),
                                                         includingPropertiesForKeys: [],
                                                         options: [.skipsSubdirectoryDescendants, .producesRelativePathURLs]) {
                 for case let fileURL as URL in enumerator {
