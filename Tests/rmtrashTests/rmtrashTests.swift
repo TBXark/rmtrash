@@ -351,6 +351,66 @@ final class RmTrashTests: XCTestCase {
         XCTAssertTrue(trash.removeMultiple(paths: ["sym.link"]))
         XCTAssertNil(fileManager.fileType(link))
     }
+    
+    func testRemoveHardLink() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let trash = makeTrash(force: false, recursive: true, fileManager: fileManager)
+        
+        // Create original file
+        let originalFile = url.appendingPathComponent("original.txt")
+        let testContent = "test content".data(using: .utf8)!
+        fileManager.createFile(atPath: originalFile.path, contents: testContent, attributes: nil)
+        
+        // Create hard link
+        let hardLink = url.appendingPathComponent("hardlink.txt")
+        XCTAssertNoThrow(try fileManager.linkItem(at: originalFile, to: hardLink))
+        
+        // Both should exist and be regular files
+        XCTAssertEqual(fileManager.fileType(originalFile), .typeRegular)
+        XCTAssertEqual(fileManager.fileType(hardLink), .typeRegular)
+        
+        // Both should have the same content
+        XCTAssertEqual(try? Data(contentsOf: originalFile), testContent)
+        XCTAssertEqual(try? Data(contentsOf: hardLink), testContent)
+        
+        // Remove the hard link (should behave like rm - only remove one reference)
+        XCTAssertTrue(trash.removeMultiple(paths: ["hardlink.txt"]))
+        
+        // Hard link should be gone, but original file should still exist
+        XCTAssertNil(fileManager.fileType(hardLink))
+        XCTAssertEqual(fileManager.fileType(originalFile), .typeRegular)
+        XCTAssertEqual(try? Data(contentsOf: originalFile), testContent)
+    }
+    
+    func testRemoveSymlinkToExistingFile() {
+        let (fileManager, url) = FileManager.createTempDirectory()
+        defer { try? fileManager.removeItem(at: url) }
+        
+        let trash = makeTrash(force: false, recursive: true, fileManager: fileManager)
+        
+        // Create target file
+        let targetFile = url.appendingPathComponent("target.txt")
+        let testContent = "target content".data(using: .utf8)!
+        fileManager.createFile(atPath: targetFile.path, contents: testContent, attributes: nil)
+        
+        // Create symbolic link to existing file
+        let symlink = url.appendingPathComponent("symlink.txt")
+        XCTAssertNoThrow(try fileManager.createSymbolicLink(at: symlink, withDestinationURL: targetFile))
+        
+        // Verify types
+        XCTAssertEqual(fileManager.fileType(targetFile), .typeRegular)
+        XCTAssertEqual(fileManager.fileType(symlink), .typeSymbolicLink)
+        
+        // Remove symbolic link (should behave like rm - only remove the link, not the target)
+        XCTAssertTrue(trash.removeMultiple(paths: ["symlink.txt"]))
+        
+        // Symbolic link should be gone, but target file should still exist
+        XCTAssertNil(fileManager.fileType(symlink))
+        XCTAssertEqual(fileManager.fileType(targetFile), .typeRegular)
+        XCTAssertEqual(try? Data(contentsOf: targetFile), testContent)
+    }
 
     func testMultipleFilesRemoval() {
         let (fileManager, url) = FileManager.createTempDirectory()
