@@ -8,7 +8,7 @@ struct Command: ParsableCommand {
         commandName: "rmtrash",
         abstract: "Move files and directories to the trash.",
         discussion: "rmtrash is a small utility that will move the file to macOS's Trash rather than obliterating the file (as rm does).",
-        version: "0.6.8",
+        version: "0.7.0",
         shouldDisplay: true,
         subcommands: [],
         helpNames: .long,
